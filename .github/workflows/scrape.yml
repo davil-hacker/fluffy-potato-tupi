@@ -2,9 +2,8 @@ name: Scrape Toffee Cookies
 
 on:
   schedule:
-    # প্রতি ৬ ঘণ্টা পর পর run হবে
     - cron: '0 */6 * * *'
-  workflow_dispatch:  # ম্যানুয়ালি run করার জন্য
+  workflow_dispatch:
 
 jobs:
   scrape:
@@ -34,11 +33,34 @@ jobs:
           libxdamage1 \
           libxfixes3 \
           libxrandr2 \
-          libxtst6
+          libxtst6 \
+          libcups2 \
+          libpango-1.0-0 \
+          libcairo2 \
+          libatspi2.0-0 \
+          libx11-xcb1 \
+          libxcb1 \
+          libxcomposite1 \
+          libxcursor1 \
+          libxdamage1 \
+          libxi6 \
+          libxtst6 \
+          libnss3 \
+          libcups2 \
+          libxss1 \
+          libxrandr2 \
+          libasound2 \
+          libatk-bridge2.0-0 \
+          libgtk-3-0 \
+          libgbm1
     
     - name: Install Python dependencies
       run: |
+        pip install --upgrade pip
         pip install -r requirements.txt
+    
+    - name: Install Playwright browsers
+      run: |
         playwright install chromium
         playwright install-deps
     
