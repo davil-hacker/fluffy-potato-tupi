@@ -23,10 +23,17 @@ async def scrape_toffee_cookies():
     logger.info(f"🐍 Python version: {sys.version}")
     
     async with async_playwright() as p:
-        # ব্রাউজার লঞ্চ
+        # ব্রাউজার লঞ্চ - GitHub-এর জন্য অপটিমাইজড
         browser = await p.chromium.launch(
             headless=HEADLESS,
-            args=['--no-sandbox', '--disable-setuid-sandbox']  # GitHub Actions-এর জন্য
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--window-size=1920,1080'
+            ]
         )
         context = await browser.new_context(
             user_agent=USER_AGENT,
@@ -57,7 +64,12 @@ async def scrape_toffee_cookies():
             await page.goto(VIDEO_URL, wait_until="domcontentloaded", timeout=30000)
             await page.wait_for_timeout(VIDEO_LOAD_WAIT * 1000)
 
-            # স্টেপ ৪: সব Cookie সংগ্রহ
+            # স্টেপ ৪: পেজের স্ক্রিনশট নিন (ডিবাগের জন্য)
+            screenshot_path = "page_screenshot.png"
+            await page.screenshot(path=screenshot_path)
+            logger.info(f"📸 Screenshot saved: {screenshot_path}")
+
+            # স্টেপ ৫: সব Cookie সংগ্রহ
             all_cookies = await context.cookies()
             logger.info(f"🍪 Total cookies collected: {len(all_cookies)}")
 
