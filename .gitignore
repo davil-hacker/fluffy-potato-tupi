@@ -38,6 +38,7 @@ test-results/
 toffee_cookies.json
 cookies.txt
 *.log
+page_screenshot.png
 
 # IDE
 .vscode/
