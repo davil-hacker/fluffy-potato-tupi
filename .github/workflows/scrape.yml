@@ -1,3 +1,4 @@
+# .github/workflows/scrape.yml
 name: Scrape Toffee Cookies
 
 on:
@@ -7,71 +8,64 @@ on:
 
 jobs:
   scrape:
-    runs-on: ubuntu-22.04  # Node.js 24 এভয়েড করার জন্য
-    
+    runs-on: ubuntu-latest  # অথবা ubuntu-22.04 ব্যবহার করতে পারেন
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3  # v4 থেকে v3-এ ডাউনগ্রেড
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4  # v5 থেকে v4-এ ডাউনগ্রেড
-      with:
-        python-version: '3.11'
-    
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          libnss3 \
-          libatk-bridge2.0-0 \
-          libdrm-dev \
-          libxkbcommon-dev \
-          libgbm-dev \
-          libasound2-dev \
-          libxshmfence1 \
-          libxcomposite1 \
-          libxdamage1 \
-          libxfixes3 \
-          libxrandr2 \
-          libxtst6 \
-          libcups2 \
-          libpango-1.0-0 \
-          libcairo2 \
-          libatspi2.0-0 \
-          libx11-xcb1 \
-          libxcb1 \
-          libxcursor1 \
-          libxi6 \
-          libxss1 \
-          libgtk-3-0 \
-          libgbm1
-    
-    - name: Install Python dependencies
-      run: |
-        pip install --upgrade pip
-        pip install -r requirements.txt
-    
-    - name: Install Playwright browsers
-      run: |
-        playwright install chromium
-        playwright install-deps
-    
-    - name: Run cookie scraper
-      run: python main.py
-    
-    - name: Upload cookies as artifact
-      uses: actions/upload-artifact@v3  # v4 থেকে v3-এ ডাউনগ্রেড
-      with:
-        name: toffee-cookies
-        path: |
-          toffee_cookies.json
-          cookies.txt
-          page_screenshot.png
-    
-    - name: Commit and push if changed
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add toffee_cookies.json cookies.txt
-        git diff --staged --quiet || git commit -m "Update cookies [skip ci]"
-        git push
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 libatk-bridge2.0-0 libdrm-dev libxkbcommon-dev \
+            libgbm-dev libasound2-dev libxshmfence1 libxcomposite1 \
+            libxdamage1 libxfixes3 libxrandr2 libxtst6 libcups2 \
+            libpango-1.0-0 libcairo2 libatspi2.0-0 libx11-xcb1 \
+            libxcb1 libxcursor1 libxi6 libxss1 libgtk-3-0 libgbm1
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: |
+          playwright install chromium
+          playwright install-deps
+
+      - name: Run cookie scraper
+        run: python main.py
+
+      - name: Upload cookies as artifact
+        if: always()  # স্ক্রিপ্ট ব্যর্থ হলেও আর্টিফ্যাক্ট আপলোড করবে
+        uses: actions/upload-artifact@v4  # <- এখানে v4 ব্যবহার করা হয়েছে
+        with:
+          name: toffee-cookies
+          path: |
+            toffee_cookies.json
+            cookies.txt
+            page_screenshot.png
+          retention-days: 7  # আর্টিফ্যাক্ট কতদিন রাখা হবে (ঐচ্ছিক)
+
+      - name: Commit and push if changed
+        if: success()  # শুধুমাত্র সফল হলে commit করবে
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add toffee_cookies.json cookies.txt
+          git diff --staged --quiet || git commit -m "Update cookies [skip ci]"
+          git push
