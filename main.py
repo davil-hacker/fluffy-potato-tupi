@@ -22,7 +22,9 @@ CONFIG = {
     "IMPORTANT_KEYWORDS": ['Edge-Cache', 'token', 'session', 'auth', 'cf_', '__cf'],
     "PAGE_LOAD_WAIT": 10,
     "VIDEO_LOAD_WAIT": 15,
-    "OUTPUT_FILE": "toffee_cookies.json"
+    "OUTPUT_FILE": "toffee_cookies.json",
+    "MAX_RETRIES": 3,
+    "RETRY_DELAY": 5
 }
 
 # ==================== LOGGING SETUP ====================
@@ -97,146 +99,171 @@ def save_cookies_as_netscape(cookies: List[Dict], filename: str = "cookies.txt")
     logger.info(f"✅ Cookies saved in Netscape format: {filename}")
 
 # ==================== MAIN SCRAPER ====================
-async def scrape_toffee_cookies():
+async def scrape_toffee_cookies(retry_count: int = 0):
     """
     Toffee TV থেকে Cookie সংগ্রহ করে JSON ফাইলে সেভ করে
     """
     logger.info("🚀 Starting Toffee TV Cookie Scraper...")
     logger.info(f"🐍 Python version: {sys.version}")
+    logger.info(f"🔄 Retry attempt: {retry_count + 1}/{CONFIG['MAX_RETRIES']}")
     
-    # Playwright ইম্পোর্ট (শুধুমাত্র এখানে)
+    # Playwright ইম্পোর্ট
     try:
         from playwright.async_api import async_playwright
-    except ImportError:
-        logger.error("❌ Playwright not installed! Run: pip install playwright && playwright install chromium")
+    except ImportError as e:
+        logger.error(f"❌ Playwright not installed: {e}")
+        logger.info("💡 Run: pip install playwright && playwright install chromium")
         return None
     
-    async with async_playwright() as p:
-        # ব্রাউজার লঞ্চ - GitHub-এর জন্য অপটিমাইজড
-        browser = await p.chromium.launch(
-            headless=CONFIG["HEADLESS"],
-            args=[
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu',
-                '--window-size=1920,1080'
-            ]
-        )
-        context = await browser.new_context(
-            user_agent=CONFIG["USER_AGENT"],
-            viewport={'width': 1920, 'height': 1080}
-        )
-        page = await context.new_page()
+    try:
+        async with async_playwright() as p:
+            # ব্রাউজার লঞ্চ
+            browser = await p.chromium.launch(
+                headless=CONFIG["HEADLESS"],
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--disable-gpu',
+                    '--window-size=1920,1080'
+                ]
+            )
+            context = await browser.new_context(
+                user_agent=CONFIG["USER_AGENT"],
+                viewport={'width': 1920, 'height': 1080}
+            )
+            page = await context.new_page()
 
-        try:
-            # স্টেপ ১: হোমপেজ ভিজিট
-            logger.info(f"🌐 Navigating to: {CONFIG['BASE_URL']}")
-            await page.goto(CONFIG['BASE_URL'], wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_timeout(CONFIG['PAGE_LOAD_WAIT'] * 1000)
-
-            # স্টেপ ২: কুকি কনসেন্ট
             try:
-                accept_buttons = await page.query_selector_all(
-                    'button:has-text("Accept"), button:has-text("Accept All"), button:has-text("OK")'
-                )
-                if accept_buttons:
-                    await accept_buttons[0].click()
-                    logger.info("✅ Accepted cookies")
-                    await page.wait_for_timeout(2000)
+                # স্টেপ ১: হোমপেজ ভিজিট
+                logger.info(f"🌐 Navigating to: {CONFIG['BASE_URL']}")
+                await page.goto(CONFIG['BASE_URL'], wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_timeout(CONFIG['PAGE_LOAD_WAIT'] * 1000)
+
+                # স্টেপ ২: কুকি কনসেন্ট
+                try:
+                    accept_buttons = await page.query_selector_all(
+                        'button:has-text("Accept"), button:has-text("Accept All"), button:has-text("OK")'
+                    )
+                    if accept_buttons:
+                        await accept_buttons[0].click()
+                        logger.info("✅ Accepted cookies")
+                        await page.wait_for_timeout(2000)
+                    else:
+                        logger.info("ℹ️ No cookie consent button found")
+                except Exception as e:
+                    logger.info(f"ℹ️ Cookie consent handling skipped: {str(e)}")
+
+                # স্টেপ ৩: ভিডিও পেজে যান
+                logger.info(f"📺 Loading video page: {CONFIG['VIDEO_URL']}")
+                await page.goto(CONFIG['VIDEO_URL'], wait_until="domcontentloaded", timeout=30000)
+                await page.wait_for_timeout(CONFIG['VIDEO_LOAD_WAIT'] * 1000)
+
+                # স্টেপ ৪: পেজের স্ক্রিনশট নিন (ডিবাগের জন্য)
+                screenshot_path = "page_screenshot.png"
+                await page.screenshot(path=screenshot_path)
+                logger.info(f"📸 Screenshot saved: {screenshot_path}")
+
+                # স্টেপ ৫: সব Cookie সংগ্রহ
+                all_cookies = await context.cookies()
+                logger.info(f"🍪 Total cookies collected: {len(all_cookies)}")
+
+                if len(all_cookies) == 0:
+                    logger.warning("⚠️ No cookies collected!")
+                    if retry_count < CONFIG['MAX_RETRIES'] - 1:
+                        logger.info(f"🔄 Retrying in {CONFIG['RETRY_DELAY']} seconds...")
+                        await asyncio.sleep(CONFIG['RETRY_DELAY'])
+                        return await scrape_toffee_cookies(retry_count + 1)
+                    else:
+                        logger.error("❌ Max retries reached. No cookies found.")
+                        return None
+
+                # কুকির বিস্তারিত তথ্য
+                cookie_details = []
+                for cookie in all_cookies:
+                    cookie_info = {
+                        'name': cookie['name'],
+                        'value': cookie['value'],
+                        'domain': cookie.get('domain', ''),
+                        'path': cookie.get('path', '/'),
+                        'expires': cookie.get('expires', 'Session'),
+                        'secure': cookie.get('secure', False),
+                        'httpOnly': cookie.get('httpOnly', False),
+                        'sameSite': cookie.get('sameSite', 'None')
+                    }
+                    cookie_details.append(cookie_info)
+
+                # গুরুত্বপূর্ণ Cookie ফিল্টার
+                important_cookies = []
+                for cookie in all_cookies:
+                    if any(keyword in cookie['name'] for keyword in CONFIG['IMPORTANT_KEYWORDS']):
+                        important_cookies.append(cookie)
+
+                logger.info(f"⭐ Important cookies found: {len(important_cookies)}")
+
+                # JSON ফরম্যাটে সেভ
+                cookie_data = {
+                    "scraped_at": datetime.now().isoformat(),
+                    "url": CONFIG['VIDEO_URL'],
+                    "total_cookies": len(all_cookies),
+                    "important_count": len(important_cookies),
+                    "important_cookies": important_cookies,
+                    "all_cookies": cookie_details,
+                    "summary": {
+                        "edge_cache_cookie": next((c for c in all_cookies if "Edge-Cache" in c['name']), None),
+                        "session_cookie": next((c for c in all_cookies if "session" in c['name'].lower()), None),
+                        "auth_cookie": next((c for c in all_cookies if "auth" in c['name'].lower()), None)
+                    }
+                }
+
+                with open(CONFIG['OUTPUT_FILE'], "w", encoding='utf-8') as f:
+                    json.dump(cookie_data, f, indent=2, ensure_ascii=False)
+                
+                logger.info(f"✅ Cookies saved to {CONFIG['OUTPUT_FILE']}")
+
+                # Netscape ফরম্যাটে সেভ
+                save_cookies_as_netscape(all_cookies)
+
+                # সারাংশ প্রিন্ট
+                print("\n" + "="*60)
+                print("📋 COOKIE SUMMARY")
+                print("="*60)
+                
+                edge_cookie = cookie_data['summary']['edge_cache_cookie']
+                if edge_cookie:
+                    print(f"🔑 Edge-Cache Cookie Found!")
+                    print(f"   Name: {edge_cookie['name']}")
+                    print(f"   Value: {edge_cookie['value'][:80]}...")
+                    print(f"   Expires: {edge_cookie.get('expires', 'Session')}")
+                    print(f"   Expiry Check: {check_cookie_expiry(edge_cookie)}")
                 else:
-                    logger.info("ℹ️ No cookie consent button found")
+                    print("⚠️ No Edge-Cache Cookie found!")
+                
+                print(f"\n📊 Statistics:")
+                print(f"   Total Cookies: {len(all_cookies)}")
+                print(f"   Important: {len(important_cookies)}")
+                print("="*60)
+
+                return cookie_data
+
             except Exception as e:
-                logger.info(f"ℹ️ Cookie consent handling skipped: {str(e)}")
+                logger.error(f"❌ Error during scraping: {str(e)}")
+                if retry_count < CONFIG['MAX_RETRIES'] - 1:
+                    logger.info(f"🔄 Retrying in {CONFIG['RETRY_DELAY']} seconds...")
+                    await asyncio.sleep(CONFIG['RETRY_DELAY'])
+                    return await scrape_toffee_cookies(retry_count + 1)
+                else:
+                    logger.error("❌ Max retries reached. Scraping failed.")
+                    return None
+            finally:
+                await browser.close()
 
-            # স্টেপ ৩: ভিডিও পেজে যান
-            logger.info(f"📺 Loading video page: {CONFIG['VIDEO_URL']}")
-            await page.goto(CONFIG['VIDEO_URL'], wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_timeout(CONFIG['VIDEO_LOAD_WAIT'] * 1000)
-
-            # স্টেপ ৪: পেজের স্ক্রিনশট নিন (ডিবাগের জন্য)
-            screenshot_path = "page_screenshot.png"
-            await page.screenshot(path=screenshot_path)
-            logger.info(f"📸 Screenshot saved: {screenshot_path}")
-
-            # স্টেপ ৫: সব Cookie সংগ্রহ
-            all_cookies = await context.cookies()
-            logger.info(f"🍪 Total cookies collected: {len(all_cookies)}")
-
-            # কুকির বিস্তারিত তথ্য
-            cookie_details = []
-            for cookie in all_cookies:
-                cookie_info = {
-                    'name': cookie['name'],
-                    'value': cookie['value'],
-                    'domain': cookie.get('domain', ''),
-                    'path': cookie.get('path', '/'),
-                    'expires': cookie.get('expires', 'Session'),
-                    'secure': cookie.get('secure', False),
-                    'httpOnly': cookie.get('httpOnly', False),
-                    'sameSite': cookie.get('sameSite', 'None')
-                }
-                cookie_details.append(cookie_info)
-
-            # গুরুত্বপূর্ণ Cookie ফিল্টার
-            important_cookies = []
-            for cookie in all_cookies:
-                if any(keyword in cookie['name'] for keyword in CONFIG['IMPORTANT_KEYWORDS']):
-                    important_cookies.append(cookie)
-
-            logger.info(f"⭐ Important cookies found: {len(important_cookies)}")
-
-            # JSON ফরম্যাটে সেভ
-            cookie_data = {
-                "scraped_at": datetime.now().isoformat(),
-                "url": CONFIG['VIDEO_URL'],
-                "total_cookies": len(all_cookies),
-                "important_count": len(important_cookies),
-                "important_cookies": important_cookies,
-                "all_cookies": cookie_details,
-                "summary": {
-                    "edge_cache_cookie": next((c for c in all_cookies if "Edge-Cache" in c['name']), None),
-                    "session_cookie": next((c for c in all_cookies if "session" in c['name'].lower()), None),
-                    "auth_cookie": next((c for c in all_cookies if "auth" in c['name'].lower()), None)
-                }
-            }
-
-            with open(CONFIG['OUTPUT_FILE'], "w", encoding='utf-8') as f:
-                json.dump(cookie_data, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"✅ Cookies saved to {CONFIG['OUTPUT_FILE']}")
-
-            # Netscape ফরম্যাটে সেভ
-            save_cookies_as_netscape(all_cookies)
-
-            # সারাংশ প্রিন্ট
-            print("\n" + "="*60)
-            print("📋 COOKIE SUMMARY")
-            print("="*60)
-            
-            edge_cookie = cookie_data['summary']['edge_cache_cookie']
-            if edge_cookie:
-                print(f"🔑 Edge-Cache Cookie Found!")
-                print(f"   Name: {edge_cookie['name']}")
-                print(f"   Value: {edge_cookie['value'][:80]}...")
-                print(f"   Expires: {edge_cookie.get('expires', 'Session')}")
-                print(f"   Expiry Check: {check_cookie_expiry(edge_cookie)}")
-            
-            print(f"\n📊 Statistics:")
-            print(f"   Total Cookies: {len(all_cookies)}")
-            print(f"   Important: {len(important_cookies)}")
-            print("="*60)
-
-            return cookie_data
-
-        except Exception as e:
-            logger.error(f"❌ Error: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return None
-        finally:
-            await browser.close()
+    except Exception as e:
+        logger.error(f"❌ Fatal error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 # ==================== HTTP REQUEST WITH COOKIES ====================
 def use_cookies_for_request(url: str, method: str = "GET", headers: dict = None):
