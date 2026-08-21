@@ -1,0 +1,60 @@
+name: Scrape Toffee Cookies
+
+on:
+  schedule:
+    # প্রতি ৬ ঘণ্টা পর পর run হবে
+    - cron: '0 */6 * * *'
+  workflow_dispatch:  # ম্যানুয়ালি run করার জন্য
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libnss3 \
+          libatk-bridge2.0-0 \
+          libdrm-dev \
+          libxkbcommon-dev \
+          libgbm-dev \
+          libasound2-dev \
+          libxshmfence1 \
+          libxcomposite1 \
+          libxdamage1 \
+          libxfixes3 \
+          libxrandr2 \
+          libxtst6
+    
+    - name: Install Python dependencies
+      run: |
+        pip install -r requirements.txt
+        playwright install chromium
+        playwright install-deps
+    
+    - name: Run cookie scraper
+      run: python cookie_scraper.py
+    
+    - name: Upload cookies as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: toffee-cookies
+        path: toffee_cookies.json
+    
+    - name: Commit and push if changed
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add toffee_cookies.json
+        git diff --staged --quiet || git commit -m "Update cookies [skip ci]"
+        git push
