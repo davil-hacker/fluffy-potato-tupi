@@ -7,14 +7,14 @@ on:
 
 jobs:
   scrape:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04  # Node.js 24 এভয়েড করার জন্য
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v3  # v4 থেকে v3-এ ডাউনগ্রেড
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v4  # v5 থেকে v4-এ ডাউনগ্রেড
       with:
         python-version: '3.11'
     
@@ -46,14 +46,6 @@ jobs:
           libgtk-3-0 \
           libgbm1
     
-    - name: Cache Playwright
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          playwright-${{ runner.os }}-
-    
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip
@@ -66,21 +58,17 @@ jobs:
     
     - name: Run cookie scraper
       run: python main.py
-      continue-on-error: false
     
     - name: Upload cookies as artifact
-      if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v3  # v4 থেকে v3-এ ডাউনগ্রেড
       with:
         name: toffee-cookies
         path: |
           toffee_cookies.json
           cookies.txt
           page_screenshot.png
-        retention-days: 30
     
     - name: Commit and push if changed
-      if: success()
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
